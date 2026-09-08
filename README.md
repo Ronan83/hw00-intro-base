@@ -113,6 +113,6 @@ folding into new configurations instead of looping visibly.
 
 ## Full Scene
 
-![Full scene](images/3.png)
+![Full scene](images/Full.gif)
 
 *Everything together: the planet, the starfield behind it, and the control panel. Every pixel here comes from noise evaluated in a shader.*
