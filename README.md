@@ -1,81 +1,118 @@
 # HW 0: Intro to Javascript and WebGL
 
-<p align="center">
-  <img width="360" height="360" src="https://user-images.githubusercontent.com/1758825/132532354-e3a45402-e484-499e-bfa7-2d73b9f2c946.png">
-</p>
-<p align="center">(source: Ken Perlin)</p>
+A procedural gas giant rendered in WebGL2. Everything on screen — the bands,
+the starfield, the surface motion — is generated from noise in the shaders.
+No textures are loaded.
 
-## Objective
-- Check that the tools and build configuration we will be using for the class works.
-- Start learning Typescript and WebGL2
-- Practice implementing noise
+**[Live Demo](https://ronan83.github.io/hw00-intro-base/)**
 
-## Forking the Code
-Rather than cloning the homework repository, please __fork__ the code into your own repository using the `Fork` button in the upper-right hand corner of the Github UI. This will enable you to have your own personal repository copy of the code, and let you make a live demo (described later in this document).
+![Gas giant](images/1.png)
 
-## Running the Code
+*an icosphere shaded by 3D Perlin noise against a procedural starfield.*
 
-1. [Install Node.js](https://nodejs.org/en/download/) (the current LTS release). Node.js is a JavaScript runtime. It basically allows you to run JavaScript when not in a browser. For our purposes, this is not necessary. The important part is that with it comes `npm`, the Node Package Manager. This allows us to easily declare and install external dependencies such as [dat.GUI](https://workshop.chromeexperiments.com/examples/gui/#1--Basic-Usage), and [glMatrix](http://glmatrix.net/).
+---
 
-2. Using a command terminal, run `npm install` in the root directory of your project. This will download all of those dependencies. On Windows, you may encounter an error message telling you that running scripts is disabled on your system (common if you've not used the command prompt on your computer before). To fix this, run this command: `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`
+## Cube
 
-3. Do either of the following (but we highly recommend the first one for reasons we will explain later).
+`Cube` extends `Drawable` with 24 vertices and 36 indices. Each of the six
+faces gets its own four vertices rather than sharing the eight corners, so
+every face can carry a single flat normal. Sharing corners would force one
+normal to serve three differently-oriented faces, and Lambert shading would
+round the cube off.
 
-    a. Run `npm run dev` (or `npm start`) and then go to `localhost:5660` in your web browser
+![Cube](images/2.png)
 
-    b. Run `npm run build` and then run `npm run preview` to serve the built `dist/` folder locally
+*The same shader on the cube. The hard edge between faces is only possible because their normals are independent.*
 
-4. A successfully built and run base code should produce the scene shown below. Note: This project was only tested in the Chrome web browser; rendering issues may occur with other browsers.
-![](base_render.png)
+## Custom Fragment Shader
 
-## Module Bundling
-One of the most important dependencies of our projects is [Vite](https://vite.dev/guide/). Vite is a dev server and module bundler which allows us to write code in separate files and use `import`s and `export`s to load classes and functions from other files. It also allows us to preprocess code before compiling to a single bundle. We will be using [Typescript](https://www.typescriptlang.org/docs/home.html) for our WebGL assignments in this course, which is Javascript augmented with type annotations. Vite converts Typescript files to Javascript on the fly during development and bundles/type-checks everything when you run `npm run build`. Read more about Javascript modules in the resources section below.
+### 3D Perlin noise
 
-## Developing Your Code
-All of the TypeScript code you will be editing can be found within the `src` directory. The "main" file that gets executed when you load the page is `main.ts`, though you should read through the other files to understand how the shaders and geometry are set up. The reason that we highly suggest you run your project with `npm run dev` is that doing so will start a process that watches for any changes you make to your code. If it detects anything, it'll automatically rebuild the affected parts of your project and hot-refresh your browser window for you. If you do it the other way (`npm run build`), you'll need to re-run that command and then refresh your page every time you want to test something.
+The noise follows Perlin's 2002 "Improved Noise" structure: hash each of the
+eight surrounding lattice corners into a gradient vector, take the dot product
+with the vector from that corner to the sample point, then blend the eight
+results with trilinear interpolation. The blend weights come from the fade
+curve `6t⁵ − 15t⁴ + 10t³`, whose first and second derivatives both vanish at
+0 and 1 — without that, the lattice grid shows up as visible creases.
 
-## Assignment Details
-1. Take some time to go through the existing codebase so you can get an understanding of syntax and how the code is architected. Much of the code is designed to mirror the class structures used in CIS 4600's OpenGL assignments, so it should hopefully be somewhat familiar.
-2. Take a look at the resources linked in the section below. Definitely read about Javascript modules and Typescript. The other links provide documentation for classes used in the code.
-3. Add a `Cube` class that inherits from `Drawable` and at the very least implement a constructor and its `create` function. Then, add a `Cube` instance to the scene to be rendered.
-4. Read the documentation for dat.GUI below. Update the existing GUI in `main.ts` with a parameter to alter the color passed to `u_Color` in the Lambert shader.
-5. Write a custom fragment shader that implements FBM, Worley Noise, or Perlin Noise based on 3D inputs (as opposed to the 2D inputs in the slides). This noise must be used to modify your fragment color. If your custom shader is particularly interesting, you'll earn some bonus points.
-6. Write a custom vertex shader that uses a trigonometric function (e.g. `sin`, `tan`) to non-uniformly modify your cube's vertex positions over time. This will necessitate instantiating an incrementing variable in your Typescript code that you pass to your shader every tick. Refer to the base code's methods of passing variables to shaders if you are unsure how to do so.
-7. Feel free to update any of the files when writing your code. The implementation of the `OpenGLRenderer` is currently very simple.
+The hash is `fract(sin(dot(...)))`, so no permutation table or lookup texture
+is needed.
 
-## Making a Live Demo
-When you push changes to the `master` branch of your repository on Github, a Github workflow will run automatically which builds your code with Vite and deploys it straight to GitHub Pages (no separate `gh-pages` branch involved). The configuration file which handles this is located at `.github/workflows/build-and-deploy.yml`. If you want to modify this, you can read more about workflows [here](https://docs.github.com/en/actions/reference/workflow-syntax-for-github-actions).
+### Bands
 
-Before your first push, tell GitHub to serve Pages from Actions instead of a branch:
+Latitude bands start as `sin(y * bandFreq)`. On their own these are perfectly
+straight stripes. Adding an fBm field to the sine's phase bends them into the
+ribbon shapes real gas giants have — the turbulence strength controls how far
+they stray from straight.
 
-  1. Open the Settings tab of your repository in Github.
+Colors come from two `smoothstep` blends over the band value: a wide one
+separating dark from light bands, and a narrow one picking out the brightest
+ribbons. All three colors derive from `u_Color`, so the whole palette shifts
+together.
 
-  2. Scroll down to the Pages tab of the Settings (in the table on the left).
+### Differential rotation
 
-  3. Under "Build and deployment" -> "Source", select **GitHub Actions**. You only need to do this once.
+The noise field drifts along x over time, but bands near the equator drift
+faster than those near the poles, mirroring how Jupiter's atmosphere actually
+rotates. This is a single `mix(1.0, 0.3, abs(latitude))` on the drift speed.
 
-  4. Push (or re-push) to `master`. The workflow will build your project and deploy it automatically. The project should be visible at http://username.github.io/repo-name.
+## Starfield Background
 
-To check if everything is on the right track:
+The background is the existing `Square` drawn through its own shader pair.
+Its vertices already span [-1, 1], which is exactly clip space, so the vertex
+shader writes them straight to `gl_Position` and skips every matrix. Depth
+writes are disabled while it draws, so it never occludes the planet no matter
+what order things are rendered in.
 
-1. Go to the **Actions** tab of your repo and confirm the latest "Build and Deploy" run finished with a green checkmark (both the `build` and `deploy` jobs).
+The stars come from cell noise rather than a texture. The plane is divided
+into a grid, each cell hashed to decide whether it holds a star at all, and
+the surviving stars are jittered off their cell centers so the grid never
+shows. Three layers at different cell sizes give a sense of depth, and each
+star carries its own sine phase so they twinkle out of step with one another.
 
-2. In the Settings tab, under Pages, make sure it says your site is published at some URL. Clicking the URL should show your live demo.
+![Starfield](images/starfield.gif)
 
-> **Note:** If the workflow fails on its very first run with an error about the `github-pages` environment not existing, that just means step 3 above (selecting "GitHub Actions" as the source) hasn't been done yet. Perform step 3, then re-run the failed workflow from the Actions tab.
+*Three layers of cell noise. Density, scale, and brightness differ per layer.*
 
-## Submission
-1. Create a pull request to this repository with your completed code.
-2. Update README.md to contain a solid description of your project with a screenshot of some visuals, and a link to your live demo.
-3. Submit the link to your pull request on Canvas, and add a comment to your submission with a hyperlink to your live demo.
-4. Include a link to your live site.
+## Custom Vertex Shader
 
-## Resources
-- Javascript modules https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import
-- Typescript https://www.typescriptlang.org/docs/home.html
-- dat.gui https://workshop.chromeexperiments.com/examples/gui/
-- glMatrix http://glmatrix.net/docs/
-- WebGL
-  - Interfaces https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API
-  - Types https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API/Types
-  - Constants https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API/Constants
+![Wobble animation](images/1.gif)
+
+*`wobbleAmp` pushed high on the cube. The faces pull apart because each already has its own vertices.*
+
+Vertices are displaced along a per-axis sine wave:
+
+```glsl
+float w = u_Time * u_WobbleSpeed;
+vec3 offset = vec3(
+    sin(w * 1.0  + vs_Pos.y * 3.0),
+    sin(w * 1.5  + vs_Pos.z * 2.5),
+    sin(w * 1.25 + vs_Pos.x * 3.5)
+);
+```
+
+Two things keep this non-uniform. Each axis reads a *different* coordinate for
+its spatial phase — x's offset varies with y, y's with z, z's with x — so no
+two vertices at different positions move identically. And the three time
+multipliers never line up into a single breathing motion, so the shape keeps
+folding into new configurations instead of looping visibly.
+
+## Controls
+
+![Controls panel](images/4.png)
+
+| Control | Effect |
+| --- | --- |
+| `tesselations` | Icosphere subdivision level, 0–8. Higher values give a smoother sphere and more vertices for the vertex shader to displace. Has no effect on the cube or square. |
+| `Load Scene` | Rebuilds all geometry from scratch. |
+| `color` | Base hue for the entire palette. The dark bands are a shaded version of it and the light bands a washed-out version, so the whole surface shifts together rather than just one layer. |
+| `model` | Switch between Icosphere, Cube, and Square. |
+| `shader` | Switch between the custom Planet shader and the original Lambert shader, for comparison. |
+| `wobbleSpeed` | How fast the vertex displacement cycles. Scales time only, so the sequence of shapes stays the same — just stretched or compressed. |
+| `wobbleAmp` | How far vertices are pushed. At 0 the geometry is untouched, which is useful for judging the fragment shader on its own. Past ~0.1 on the cube the faces separate enough to see that each carries its own normal. |
+
+## Full Scene
+
+![Full scene](images/3.png)
+
+*Everything together: the planet, the starfield behind it, and the control panel. Every pixel here comes from noise evaluated in a shader.*
