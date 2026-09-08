@@ -20,6 +20,9 @@ uniform mat4 u_ViewProj;    // The matrix that defines the camera's transformati
                             // but in HW3 you'll have to generate one yourself
 uniform float u_Time;
 
+uniform float u_WobbleSpeed;   // how fast the surface undulates
+uniform float u_WobbleAmp;     // how far vertices are pushed along the wobble
+
 in vec4 vs_Pos;             // The array of vertex positions passed to the shader
 
 in vec4 vs_Nor;             // The array of vertex normals passed to the shader
@@ -36,27 +39,25 @@ const vec4 lightPos = vec4(5, 5, 3, 1); //The position of our virtual light, whi
 
 void main()
 {
-    fs_Col = vs_Col;                         // Pass the vertex colors to the fragment shader for interpolation
+    fs_Col = vs_Col;
 
     mat3 invTranspose = mat3(u_ModelInvTr);
-    fs_Nor = vec4(invTranspose * vec3(vs_Nor), 0);          // Pass the vertex normals to the fragment shader for interpolation.
-                                                            // Transform the geometry's normals by the inverse transpose of the
-                                                            // model matrix. This is necessary to ensure the normals remain
-                                                            // perpendicular to the surface after the surface is transformed by
-                                                            // the model matrix.
+    fs_Nor = vec4(invTranspose * vec3(vs_Nor), 0);
+
+    // Non-uniform displacement: each axis gets its own time rate and its own
+    // spatial frequency, so the shape never expands and contracts as a whole.
+    float w = u_Time * u_WobbleSpeed;
     vec3 offset = vec3(
-        sin(u_Time * 0.02 + vs_Pos.y * 3.0),
-        sin(u_Time * 0.03 + vs_Pos.z * 2.5),
-        sin(u_Time * 0.025 + vs_Pos.x * 3.5)
+        sin(w * 1.0 + vs_Pos.y * 3.0),
+        sin(w * 1.5 + vs_Pos.z * 2.5),
+        sin(w * 1.25 + vs_Pos.x * 3.5)
     );
-    vec4 displaced = vs_Pos + vec4(offset * 0.05, 0.0);
+    vec4 displaced = vs_Pos + vec4(offset * u_WobbleAmp, 0.0);
 
     vec4 modelposition = u_Model * displaced;
+    fs_Pos = vs_Pos;
 
-    fs_Pos = vs_Pos;  
+    fs_LightVec = lightPos - modelposition;
 
-    fs_LightVec = lightPos - modelposition;  // Compute the direction in which the light source lies
-
-    gl_Position = u_ViewProj * modelposition;// gl_Position is a built-in variable of OpenGL which is
-                                             // used to render the final positions of the geometry's vertices
+    gl_Position = u_ViewProj * modelposition;
 }
