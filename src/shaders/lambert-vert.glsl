@@ -46,7 +46,7 @@ void main()
                                                             // the model matrix.
     vec4 modelposition = u_Model * vs_Pos;
 
-    fs_Pos = vs_Pos;  
+    
 
     fs_LightVec = lightPos - modelposition;  // Compute the direction in which the light source lies
 
